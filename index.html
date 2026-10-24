@@ -1160,7 +1160,7 @@ function aiMsgsHTML(){
   }).join('')+(aiLoading?'<div class="amsg a"><b>'+CAPY_IMG+'Capy</b><div><i>Capy đang nghĩ… ⏳ (tối đa 60 giây, app không đơ đâu)</i></div></div>':'');
 }
 function vAI(){
-  var h='<h1>'+CAPY_IMG+' Trợ lý AI</h1><p class="sub">Bot damu — gia sư từ vựng chạy ngay trong trình duyệt bằng AI miễn phí, KHÔNG cần key, không cần tài khoản.</p>';
+  var h='<h1>'+CAPY_IMG+' Trợ lý AI</h1><p class="sub">Bot damu — gia sư từ vựng chạy ngay trong trình duyệt bằng Bot damu, KHÔNG cần key, không cần tài khoản.</p>';
   h+='<div class="box" style="padding:10px 14px"><div class="wrow" style="border:0;padding:0"><div class="w"><b>🤖 Bot damu đang sẵn sàng — không cần key nữa</b><small>Ô key Gemini đã bỏ hẳn. Cứ hỏi thẳng: hỏi về 1 từ là Capy ĐỐ bạn từng từ đồng/trái nghĩa một, gợi ý tiếng Anh trước, đáp án tiếng Việt sau.</small></div></div></div>';
   h+='<div class="box"><div id="aimsgs">'+aiMsgsHTML()+'</div>';
   /* bind value=aiQ + oninput lưu state (không render lại khi gõ) để render() không xóa chữ đang gõ */
