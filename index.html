@@ -138,13 +138,13 @@ async function netDiag(){
     ['Tra từ (Wiktionary)','GET','https://en.wiktionary.org/api/rest_v1/page/definition/hello'],
     ['Đồng/trái nghĩa (Datamuse)','GET','https://api.datamuse.com/words?rel_syn=happy&max=1'],
     ['Dịch tự động (MyMemory)','GET','https://api.mymemory.translated.net/get?q=hello&langpair=en|vi'],
-    ['Bot AI damu (Pollinations, không key)','GET','https://text.pollinations.ai/hello'],
+    ['Bot damu (đường riêng)','GET','https://damu-bot.ntai200508.workers.dev/health'],
     ['Mạng chung (đối chứng)','GET','https://www.google.com/generate_204']
   ];
   for(var i=0;i<tests.length;i++){
     var name=tests[i][0],method=tests[i][1],url=tests[i][2],t0=Date.now(),st;
     try{
-      /* (d) Pollinations keyless: nhận được HTTP 200 tức là bot AI damu tới được */
+      /* (d) Worker damu: nhận được HTTP 200 tức là bot AI damu tới được */
       var r=method==='POST'
         ?await fetchTimeout(url,10000,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}'})
         :await fetchTimeout(url,10000);
@@ -1110,11 +1110,11 @@ function restore(){
   }catch(e){note='Không nhập được: '+e.message;}render();};
   r.readAsText(f);
 }
-/* ============ TRỢ LÝ AI = BOT DAMU (keyless, chạy ngay trong trình duyệt) ============
+/* ============ TRỢ LÝ AI = BOT DAMU (keyless, qua đường riêng damu) ============
    2026-10-24: tab Trợ lý AI CHÍNH LÀ bot damu — bỏ hẳn đường Gemini + key:
    KHÔNG ô nhập key, KHÔNG circuit breaker, KHÔNG thông báo "phải nhập key".
-   Engine: Pollinations keyless (POST https://text.pollinations.ai/openai — cùng
-   đường với bot ở hub/bot/), persona Capy gia sư damu. Phong cách giữ nguyên ý
+   Engine: Worker damu (POST /complete — cùng đường với bot ở hub/bot/),
+   persona Capy gia sư damu. Phong cách giữ nguyên ý
    Nguyễn: hỏi về 1 từ -> ĐỐ từng từ đồng nghĩa rồi trái nghĩa, mỗi lượt đúng 1
    câu, gợi ý TIẾNG ANH trước, đáp án TIẾNG VIỆT chỉ cho sau khi người học đã
    trả lời hoặc chịu thua. Bot lỗi thì báo trung thực, không bịa câu trả lời. */
@@ -1173,13 +1173,14 @@ function aiScroll(){try{var m=$('aimsgs');if(m)m.scrollTop=m.scrollHeight;}catch
 function aiNetMsg(code){
   if(code==='offline')return AI_ERR.offline;
   if(code.indexOf('slow:')===0)return 'Bot damu phản hồi quá chậm (hơn 60 giây). Bạn bấm "Gửi" lại thử nhé.';
-  if(code.indexOf('blocked:')===0)return 'Không kết nối được tới máy chủ bot (Pollinations). Có thể mạng của bạn đang chặn nó — bấm nút "🔧 Kiểm tra kết nối" ở cuối tab này để xem chi tiết nhé.';
+  if(code.indexOf('blocked:')===0)return 'Không kết nối được tới máy chủ bot (Worker damu). Có thể mạng của bạn đang chặn nó — bấm nút "🔧 Kiểm tra kết nối" ở cuối tab này để xem chi tiết nhé.';
   if(code==='sourceerror')return 'Gọi bot gặp lỗi lạ (không phải do mạng). Chụp màn hình gửi cho tôi nhé.';
   return '';
 }
-/* ---- Engine bot damu keyless: POST https://text.pollinations.ai/openai (như hub/bot/) ----
+/* ---- Engine bot damu: POST Worker /complete (như hub/bot/) ----
    Promise.race với timeout cứng: AbortSignal chỉ hủy được fetch(), không hủy được
    r.text() nếu server gửi header rồi treo body — race đảm bảo không treo quá hạn. */
+var DAMU_WORKER_URL='https://damu-bot.ntai200508.workers.dev';
 var AI_BOT_TIMEOUT_MS=60000;
 async function botRaw(messages,timeoutMs,temp){
   var ms=timeoutMs||AI_BOT_TIMEOUT_MS;
@@ -1188,29 +1189,22 @@ async function botRaw(messages,timeoutMs,temp){
       var sig=null;try{sig=AbortSignal.timeout(ms);}catch(e){}
       var r;
       try{
-        r=await fetch('https://text.pollinations.ai/openai',{method:'POST',headers:{'Content-Type':'application/json'},signal:sig,body:JSON.stringify({model:'openai',private:true,temperature:(typeof temp==='number'?temp:0.5),messages:messages})});
-      }catch(e){throw classifyNetErr(e,'text.pollinations.ai');}
-      if(r.status===429)throw new Error('quota|HTTP 429 từ Pollinations.');
-      if(!r.ok)throw new Error('server|HTTP '+r.status+' từ Pollinations.');
-      var raw='';
-      try{raw=await r.text();}catch(e){throw new Error('server|Không đọc được dữ liệu từ bot.');}
-      if(!raw||!raw.trim())throw new Error('empty');
-      /* Envelope JSON mà không có content (model đốt hết token vào reasoning,
-         test thật 2026-10-24 đã gặp) -> coi là 'empty' để nơi gọi thử lại,
-         TUYỆT ĐỐI không hiển thị nguyên envelope/reasoning cho người học. */
-      try{var j=JSON.parse(raw);if(j&&typeof j==='object'){
-        if(j.choices&&j.choices[0]&&j.choices[0].message&&typeof j.choices[0].message.content==='string'&&j.choices[0].message.content.trim())return j.choices[0].message.content.trim();
-        throw new Error('empty');
-      }}catch(x){if(x&&x.message==='empty')throw x;}
-      return raw.trim();
+        r=await fetch(DAMU_WORKER_URL+'/complete',{method:'POST',headers:{'Content-Type':'application/json'},signal:sig,body:JSON.stringify({messages:messages,temperature:(typeof temp==='number'?temp:0.5)})});
+      }catch(e){throw classifyNetErr(e,'damu-bot.ntai200508.workers.dev');}
+      if(r.status===429)throw new Error('quota|HTTP 429 từ Worker damu.');
+      if(!r.ok)throw new Error('server|HTTP '+r.status+' từ Worker damu.');
+      var j=null;
+      try{j=await r.json();}catch(e){throw new Error('server|Không đọc được dữ liệu từ bot.');}
+      if(!j||j.ok!==true||typeof j.text!=='string'||!j.text.trim())throw new Error('empty');
+      return j.text.trim();
     })(),
-    new Promise(function(_,rej){setTimeout(function(){rej(new Error('slow:text.pollinations.ai'));},ms+5000);})
+    new Promise(function(_,rej){setTimeout(function(){rej(new Error('slow:damu-worker'));},ms+5000);})
   ]);
 }
 /* Chat: gửi kèm lịch sử gần nhất (tối đa 12 tin) để bot nhớ mạch ĐỐ từng câu —
    người học trả lời câu đố trước, bot chấm rồi mới hỏi câu tiếp theo.
    Lượt trả rỗng (empty) -> thử lại đúng 1 lần với temperature khác để tránh
-   trúng lại bản cache lỗi phía Pollinations. */
+   trúng lại bản lỗi phía máy chủ. */
 async function botAsk(q){
   var hist=aiMsgs.slice(-12).map(function(m){return {role:m.r==='u'?'user':'assistant',content:m.t};});
   if(!hist.length||hist[hist.length-1].content!==q)hist.push({role:'user',content:q});
