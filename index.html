@@ -138,19 +138,18 @@ async function netDiag(){
     ['Tra từ (Wiktionary)','GET','https://en.wiktionary.org/api/rest_v1/page/definition/hello'],
     ['Đồng/trái nghĩa (Datamuse)','GET','https://api.datamuse.com/words?rel_syn=happy&max=1'],
     ['Dịch tự động (MyMemory)','GET','https://api.mymemory.translated.net/get?q=hello&langpair=en|vi'],
-    ['Máy chủ AI (Google)','POST','https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=INVALID'],
+    ['Bot AI damu (Pollinations, không key)','GET','https://text.pollinations.ai/hello'],
     ['Mạng chung (đối chứng)','GET','https://www.google.com/generate_204']
   ];
   for(var i=0;i<tests.length;i++){
     var name=tests[i][0],method=tests[i][1],url=tests[i][2],t0=Date.now(),st;
     try{
-      /* (d) key=INVALID nên Google PHẢI trả 400 — nhận được HTTP (kể cả 400) tức là tới được Google */
+      /* (d) Pollinations keyless: nhận được HTTP 200 tức là bot AI damu tới được */
       var r=method==='POST'
         ?await fetchTimeout(url,10000,{method:'POST',headers:{'Content-Type':'application/json'},body:'{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}'})
         :await fetchTimeout(url,10000);
       var secs=((Date.now()-t0)/1000).toFixed(1),http=r.status,ok,tag='';
-      if(i===3){ok=http>0;tag=(http===400)?'(đúng như kỳ vọng với key INVALID)':'(trả HTTP lạ — ghi lại giúp tôi)';}
-      else{ok=r.ok;if(i===4&&!ok)tag='(endpoint này không có CORS nên trình duyệt chặn — fail là bình thường, bỏ qua)';}
+      ok=r.ok;if(i===4&&!ok)tag='(endpoint này không có CORS nên trình duyệt chặn — fail là bình thường, bỏ qua)';
       st={name:name,ok:ok,http:http,ms:secs,tag:tag,why:''};
     }catch(e){
       var em=String(e&&e.message||e),en=String(e&&e.name||''),secs2=((Date.now()-t0)/1000).toFixed(1);
@@ -670,7 +669,7 @@ function dictResultHTML(){
   if(d.viAuto)h+='<div class="synant" style="margin-top:0"><b>Nghĩa Việt (dịch tự động):</b> '+esc(d.viAuto)+' <span class="small">(dịch máy, có thể chưa chuẩn)</span></div>';
   h+=fullEntryHTML({word:w,phonetic:d.phonetic,audio:d.audio,vi:'',meanings:d.meanings,syn:d.syn,ant:d.ant,prep:'',forms:null});
   var exists=findWordId(w);
-  h+='<div class="row">'+(exists?'<button disabled>✓ Đã có trong bộ nhớ</button>':'<button class="p" onclick="addDictWord()">＋ Thêm vào bộ nhớ</button>')+'</div></div>';
+  h+='<div class="row">'+(exists?'<button disabled>✓ Đã có trong bộ nhớ</button>':'<button class="p" onclick="addDictWord()">＋ Thêm vào bộ nhớ</button>')+'<button onclick="askAIWord(&quot;'+esc(w)+'&quot;)">🤖 Hỏi AI về từ này</button></div></div>';
   return h;
 }
 async function doLookup(){
@@ -962,7 +961,7 @@ async function importParsed(list,src,isWS){
   });
   /* Bù trường còn thiếu bằng từ điển (worksheet có thể thiếu vi/syn/ant); giới hạn 40 từ/lượt */
   var needy=newIds.filter(function(id){var w=getWord(id);return w&&(!(w.meanings&&w.meanings.length)||!(w.syn&&w.syn.length)||!(w.ant&&w.ant.length)||(!w.viGloss&&(!w.vi||w.vi.length>40)));});
-  var LIMIT=40,enr=Math.min(needy.length,LIMIT),okn=0,fail=[];
+  var LIMIT=40,enr=Math.min(needy.length,LIMIT),okn=0,fail=[],botMiss=[];
   addState.failed=[];
   for(var i=0;i<enr;i++){
     var w=getWord(needy[i]);if(!w)continue;
@@ -977,6 +976,22 @@ async function importParsed(list,src,isWS){
       if(!w.phonetic&&d.phonetic)patch.phonetic=d.phonetic;
       if(!w.audio&&d.audio)patch.audio=d.audio;
       upsertWord(patch);
+      /* 2026-10-24 (bot damu keyless): từ điển còn thiếu syn/ant/nghĩa Việt thì bot bù bằng
+         1 lượt Pollinations gọn. Bot lỗi/không đọc được -> GIỮ NGUYÊN dữ liệu từ điển và
+         ghi vào botMiss để báo trung thực ở cuối lượt — TUYỆT ĐỐI không bịa dữ liệu. */
+      var _w2=getWord(needy[i]);
+      if(_w2&&(!(_w2.syn&&_w2.syn.length)||!(_w2.ant&&_w2.ant.length)||(!_w2.viGloss&&!_w2.vi))){
+        try{
+          var be=await botEnrichWord(w.word);
+          if(be){
+            var bp={word:w.word};
+            if(!(_w2.syn&&_w2.syn.length)&&be.syn.length)bp.syn=be.syn;
+            if(!(_w2.ant&&_w2.ant.length)&&be.ant.length)bp.ant=be.ant;
+            if(!_w2.viGloss&&!_w2.vi&&be.vi)bp.vi=be.vi;
+            if(bp.syn||bp.ant||bp.vi)upsertWord(bp);
+          }else botMiss.push(w.word);
+        }catch(be2){botMiss.push(w.word);}
+      }
       /* Việc mới 2: chưa có viGloss mà w.vi dài/rỗng -> dịch máy định nghĩa EN làm phương án
          dự phòng, lưu vào viAuto (thẻ en-vi sẽ dùng). Dùng chung delay 600ms bên dưới. */
       if(!w.viGloss&&(!w.vi||w.vi.length>40)){
@@ -989,7 +1004,13 @@ async function importParsed(list,src,isWS){
       /* FIX: dịch nền ví dụ tiếng Anh đầu tiên sang Việt, lưu vào defs[].exVi */
       try{var _sw=getWord(needy[i]);if(_sw&&await translateExample(_sw))save();}catch(x){}
       okn++;
-    }catch(e){fail.push(w.word);}
+    }catch(e){
+      /* Từ điển lỗi hẳn -> thử bot damu keyless làm nguồn bù duy nhất; bot cũng lỗi
+         thì mới ghi fail (báo trung thực trong note cuối lượt, không làm giàu giả). */
+      var be3=null;try{be3=await botEnrichWord(w.word);}catch(x){}
+      if(be3&&(be3.syn.length||be3.ant.length||be3.vi)){upsertWord({word:w.word,syn:be3.syn,ant:be3.ant,vi:be3.vi||''});okn++;}
+      else fail.push(w.word);
+    }
     await new Promise(function(r){setTimeout(r,600);});
   }
   newIds.forEach(function(id){makeCards(id);}); /* tạo đủ mọi loại thẻ sau khi đã giàu dữ liệu */
@@ -1000,6 +1021,7 @@ async function importParsed(list,src,isWS){
   save();
   addState.progress='';
   note='Đã thêm '+added+' từ mới'+(merged?' (cập nhật '+merged+' từ đã có từ file)':'')+(skipped?' (bỏ qua '+skipped+' từ đã có)':'')+'. Tra được từ điển '+okn+'/'+enr+' từ'+(fail.length?' (lỗi: '+fail.join(', ')+')':'')+'.';
+  if(botMiss.length)note+=' Bot AI không bù được cho: '+botMiss.join(', ')+' (để trống phần thiếu, không bịa — tra lại sau nhé).';
   if(needy.length>LIMIT)note+=' Còn '+(needy.length-LIMIT)+' từ chưa tra — bấm "Tự tra từ điển" ở mục 4 để tra tiếp.';
   if(src==='file'){addState.fileName='';addState.fileText='';addState.isWS=false;}
   render();
@@ -1088,28 +1110,29 @@ function restore(){
   }catch(e){note='Không nhập được: '+e.message;}render();};
   r.readAsText(f);
 }
-/* ============ TRỢ LÝ AI (Gemini trực tiếp từ trình duyệt, không backend) ============ */
-var AI_MODELS=['gemini-3.8-flash','gemini-3.7-flash','gemini-3.6-flash','gemini-3.5-flash']; /* FIX 2026-10-15 (#7): chỉ còn là PHƯƠNG ÁN DỰ PHÒNG khi không liệt kê được model — gemini-2.5/2.0-flash đã bị Google gỡ hẳn, không dùng nữa */
-var AI_KEYLS='vocabAI.key';
-var AI_SYSTEM='Bạn là gia sư từ vựng tiếng Anh cho người Việt, nói giọng capybara hơi "mỏ hỗn" nhưng dễ thương: trêu nhẹ, chọc vui khi người học sai, khen ngợi khi đúng. Trả lời ngắn gọn, chính xác, bằng tiếng Việt. Khi được yêu cầu đố từ, hỏi lần lượt từng câu một và chờ người học trả lời từng câu rồi mới cho đáp án.';
-var AI_ERR={offline:'Mất mạng rồi — kiểm tra kết nối internet rồi gửi lại nhé.',badkey:'Key không đúng (máy chủ báo lỗi 400). Kiểm tra lại key đã copy đủ chưa, hoặc tạo key mới ở Google AI Studio.',forbidden:'Key bị từ chối (lỗi 403). Có thể key chưa bật Gemini API — vào Google AI Studio kiểm tra lại.',quota:'Hết quota miễn phí (lỗi 429). Nghỉ một lát rồi thử lại, hoặc nâng cấp quota nhé.',server:'Máy chủ AI đang lỗi, thử lại sau vài phút nhé.',empty:'AI không trả lời được câu này, thử hỏi cách khác nhé.',model404:'Google đã đổi tên hoặc gỡ model AI này (lỗi 404). Báo cho tôi để cập nhật app nhé.'};
-var aiMsgs=[],aiLoading=false,aiPending='',aiQ='',aiNoKeyWarn=false; /* FIX 2026-10-15 (#2): aiNoKeyWarn bật khi aiSend bị chặn vì chưa có key → vAI hiện cảnh báo ngay trên khung chat */
-/* FIX Lỗi C2: persist lịch sử chat AI vào localStorage (giữ ~50 tin nhắn gần nhất), restore khi load trang */
+/* ============ TRỢ LÝ AI = BOT DAMU (keyless, chạy ngay trong trình duyệt) ============
+   2026-10-24: tab Trợ lý AI CHÍNH LÀ bot damu — bỏ hẳn đường Gemini + key:
+   KHÔNG ô nhập key, KHÔNG circuit breaker, KHÔNG thông báo "phải nhập key".
+   Engine: Pollinations keyless (POST https://text.pollinations.ai/openai — cùng
+   đường với bot ở hub/bot/), persona Capy gia sư damu. Phong cách giữ nguyên ý
+   Nguyễn: hỏi về 1 từ -> ĐỐ từng từ đồng nghĩa rồi trái nghĩa, mỗi lượt đúng 1
+   câu, gợi ý TIẾNG ANH trước, đáp án TIẾNG VIỆT chỉ cho sau khi người học đã
+   trả lời hoặc chịu thua. Bot lỗi thì báo trung thực, không bịa câu trả lời. */
+var AI_SYSTEM='Bạn là Capy — gia sư từ vựng tiếng Anh của app damu cho người Việt, giọng capybara hơi "mỏ hỗn" nhưng dễ thương: trêu nhẹ khi người học sai, khen khi đúng. Trả lời ngắn gọn, chính xác, bằng tiếng Việt (trừ ví dụ tiếng Anh). QUY TẮC ĐỐ TỪ (bắt buộc khi người học hỏi về một từ hoặc nhờ đố): hỏi LẦN LƯỢT TỪNG CÂU MỘT — đầu tiên đố các từ ĐỒNG NGHĨA (mỗi lượt đúng 1 từ), người học trả lời xong mới chấm câu đó: đúng thì khen, sai thì cho GỢI Ý TIẾNG ANH trước (định nghĩa/gợi ý bằng tiếng Anh), chờ trả lời lại; chỉ khi người học chịu thua hoặc sai lần 2 mới cho ĐÁP ÁN kèm nghĩa TIẾNG VIỆT. Hết đồng nghĩa mới chuyển sang TRÁI NGHĨA, cũng từng câu một. TUYỆT ĐỐI không liệt kê đáp án hàng loạt, không cho đáp án tiếng Việt trước khi người học tự trả lời.';
+var AI_ERR={offline:'Mất mạng rồi — kiểm tra kết nối internet rồi gửi lại nhé.',quota:'Bot đang quá tải (lỗi 429). Nghỉ một lát rồi thử lại nhé.',server:'Máy chủ bot đang lỗi, thử lại sau vài phút nhé.',empty:'Bot không trả lời được câu này, thử hỏi cách khác nhé.'};
+var aiMsgs=[],aiLoading=false,aiPending='',aiQ='';
+/* Lịch sử chat persist vào localStorage (giữ ~50 tin nhắn gần nhất), restore khi load trang — schema giữ nguyên như cũ */
 var AI_MSGSLS='vocabAI.msgs';
 try{var _m=JSON.parse(localStorage.getItem(AI_MSGSLS));if(Array.isArray(_m))aiMsgs=_m.slice(-50);}catch(e){}
 function aiMsgsSave(){try{localStorage.setItem(AI_MSGSLS,JSON.stringify(aiMsgs.slice(-50)));}catch(e){}}
-function aiGetKey(){try{return (localStorage.getItem(AI_KEYLS)||'').trim();}catch(e){return '';}} /* FIX 2026-10-15 (#9): trim — key dính khoảng trắng đầu/cuối (copy thừa) thì coi như chưa có key, tránh gọi API rồi nhận 400 khó hiểu */
-/* FIX 2026-10-15 (#4): sau setItem phải đọc lại getItem để xác minh đã lưu thật — tránh báo "Đã lưu key" giả */
-function aiSaveKeyUI(){var i=$('akey');var k=i?i.value.trim():'';if(!k){note='Dán key vào ô trước khi bấm Lưu nhé.';render();return;}var ok=false;try{localStorage.setItem(AI_KEYLS,k);ok=(localStorage.getItem(AI_KEYLS)===k);}catch(e){aiLogErr('aiSaveKeyUI',e);}if(ok){aiNoKeyWarn=false;note='Đã lưu key. Hỏi gì đi!';}else{aiLogErr('aiSaveKeyUI.savefail',new Error('setItem xong nhưng đọc lại không khớp'));note='⚠️ Không lưu được key vào trình duyệt này (bộ nhớ bị chặn hoặc đã đầy). Thử tắt chế độ ẩn danh/riêng tư rồi nhập lại nhé.';}render();}
-function aiClearKeyUI(){try{localStorage.removeItem(AI_KEYLS);}catch(e){}aiModelCacheClear();aiMsgs=[];aiMsgsSave();note='Đã xóa key khỏi máy này.';render();}
-/* ---- FIX 2026-10-15 (#5): log lỗi AI — Nguyễn bấm "📋 Chép log lỗi" là có chữ để dán gửi, khỏi mở DevTools ---- */
+/* ---- Log lỗi AI — Nguyễn bấm "📋 Chép log lỗi" là có chữ để dán gửi, khỏi mở DevTools ---- */
 var aiErrLog=[];
 try{var _el=JSON.parse(localStorage.getItem('vocabAI.errlog'));if(Array.isArray(_el))aiErrLog=_el.slice(-20);}catch(e){aiErrLog=[];}
 function aiLogErr(where,e){
   try{
     var em=String((e&&e.message)||e).slice(0,300),st='';
     try{st=String(e&&e.stack||'').split('\n').slice(0,4).join(' | ').slice(0,600);}catch(x){}
-    aiErrLog.push({t:new Date().toISOString(),where:String(where),key:aiGetKey()?'có key':'CHƯA có key',loading:!!aiLoading,msg:em,stack:st});
+    aiErrLog.push({t:new Date().toISOString(),where:String(where),key:'bot-keyless (không cần key)',loading:!!aiLoading,msg:em,stack:st});
     aiErrLog=aiErrLog.slice(-20);
     try{localStorage.setItem('vocabAI.errlog',JSON.stringify(aiErrLog));}catch(x){}
   }catch(x){}
@@ -1131,275 +1154,102 @@ function copyText(txt,okmsg){
 }
 function aiCopyErrLog(){copyText(aiErrLogText(),'Đã chép log lỗi AI — dán vào tin nhắn gửi tôi nhé.');}
 function aiMsgsHTML(){
-  if(!aiMsgs.length)return '<p class="msg">Chưa có câu hỏi nào. Ví dụ: "từ \'convince\' dùng với giới từ gì?", "phân biệt \'convince\' và \'persuade\'".</p>';
+  if(!aiMsgs.length)return '<p class="msg">Chưa có câu hỏi nào. Ví dụ: "từ \'convince\' dùng với giới từ gì?", "phân biệt \'convince\' và \'persuade\'", hoặc "đố tôi từ convince".</p>';
   return aiMsgs.map(function(m){
     return '<div class="amsg '+(m.r==='u'?'u':'a')+'"><b>'+(m.r==='u'?'Bạn':CAPY_IMG+'Capy')+'</b><div>'+esc(m.t).replace(/\n/g,'<br>')+'</div></div>';
-  }).join('')+(aiLoading?'<div class="amsg a"><b>'+CAPY_IMG+'Capy</b><div><i>Capy đang nghĩ… ⏳ (tối đa 90 giây, app không đơ đâu)</i></div></div>':'');
+  }).join('')+(aiLoading?'<div class="amsg a"><b>'+CAPY_IMG+'Capy</b><div><i>Capy đang nghĩ… ⏳ (tối đa 60 giây, app không đơ đâu)</i></div></div>':'');
 }
 function vAI(){
-  var key=aiGetKey();
-  var h='<h1>'+CAPY_IMG+' Trợ lý AI</h1><p class="sub">Gia sư từ vựng chạy bằng Gemini, gọi trực tiếp từ trình duyệt — không qua máy chủ trung gian.</p>';
-  if(!key){
-    h+='<div class="box"><h2>🔑 Cài đặt: nhập key của bạn</h2><p class="msg">Lấy key miễn phí: mở <b>Google AI Studio</b> → đăng nhập tài khoản Google → <b>Get API Key</b> → <b>Create API key</b> → copy rồi dán vào ô dưới.</p>';
-    h+='<div class="row" style="margin-top:0"><input type="password" id="akey" placeholder="Dán Gemini API key vào đây" style="flex:3;min-width:180px"><button class="p" style="flex:1" onclick="aiSaveKeyUI()">Lưu key</button></div><p class="small">Key chỉ lưu trong trình duyệt này (localStorage), không gửi đi đâu khác, không lưu trong file.<br>Key lưu theo trình duyệt + địa chỉ web này — mở link GitHub Pages phải nhập lại key 1 lần.</p></div>';
-  }else{
-    h+='<div class="box" style="padding:10px 14px"><div class="wrow" style="border:0;padding:0"><div class="w"><b>Key đã lưu</b><small>••••'+esc(key.slice(-4))+'</small></div><button onclick="aiClearKeyUI()">Xóa key</button></div></div>';
-  }
+  var h='<h1>'+CAPY_IMG+' Trợ lý AI</h1><p class="sub">Bot damu — gia sư từ vựng chạy ngay trong trình duyệt bằng AI miễn phí, KHÔNG cần key, không cần tài khoản.</p>';
+  h+='<div class="box" style="padding:10px 14px"><div class="wrow" style="border:0;padding:0"><div class="w"><b>🤖 Bot damu đang sẵn sàng — không cần key nữa</b><small>Ô key Gemini đã bỏ hẳn. Cứ hỏi thẳng: hỏi về 1 từ là Capy ĐỐ bạn từng từ đồng/trái nghĩa một, gợi ý tiếng Anh trước, đáp án tiếng Việt sau.</small></div></div></div>';
   h+='<div class="box"><div id="aimsgs">'+aiMsgsHTML()+'</div>';
-  /* FIX 2026-10-15 (#2): cảnh báo "chưa có key" NGAY TRÊN khung chat (không chôn cuối trang),
-     chữ của bạn vẫn còn nguyên trong ô nhập — không mất */
-  if(aiNoKeyWarn&&!key){
-    h+='<p class="msg" style="color:#b00"><b>⚠️ Chưa gửi được vì chưa có key</b> — chữ của bạn vẫn còn ở ô bên dưới, không mất đâu. Dán key vào ô ở phần trên rồi bấm "Lưu key", sau đó bấm "Gửi" lại nhé.<br><small>Key lưu theo trình duyệt + địa chỉ web này — mở link GitHub Pages phải nhập lại key 1 lần.</small></p>';
-  }
-  /* FIX Lỗi C1: bind value=aiQ + oninput lưu state (không render lại khi gõ) để render() không xóa chữ đang gõ */
+  /* bind value=aiQ + oninput lưu state (không render lại khi gõ) để render() không xóa chữ đang gõ */
   h+='<div class="row" style="margin-top:0"><input type="text" id="ain" placeholder="Hỏi gì về từ vựng…" value="'+esc(aiQ)+'" oninput="aiQ=this.value" style="flex:3;min-width:180px" onkeydown="if(event.key===\'Enter\'&&!event.isComposing)aiSend()"><button class="p" style="flex:1" onclick="aiSend()">Gửi</button></div>';
-  h+='<div class="row"><button onclick="aiCopyErrLog()">📋 Chép log lỗi</button><span class="small">AI bị lỗi thì bấm nút này rồi dán gửi tôi — khỏi mở DevTools.</span></div></div>';
+  h+='<div class="row"><button onclick="aiCopyErrLog()">📋 Chép log lỗi</button><span class="small">Bot bị lỗi thì bấm nút này rồi dán gửi tôi — khỏi mở DevTools.</span></div></div>';
   h+=netDiagHTML();
   return h;
 }
-function aiScroll(){try{var m=$('aimsgs');if(m)m.scrollTop=m.scrollHeight;}catch(e){aiLogErr('aiScroll',e);}} /* FIX 2026-10-15 (#3/#5): không để throw làm kẹt aiLoading */
+function aiScroll(){try{var m=$('aimsgs');if(m)m.scrollTop=m.scrollHeight;}catch(e){aiLogErr('aiScroll',e);}}
 function aiNetMsg(code){
   if(code==='offline')return AI_ERR.offline;
-  if(code.indexOf('slow:')===0)return 'Máy chủ Google phản hồi quá chậm (hơn 90 giây). App đã tự thử lại 1 lần với model dự phòng mà vẫn chậm — bạn bấm "Gửi" lại thử nhé.';
-  if(code.indexOf('blocked:')===0)return 'Không kết nối được tới máy chủ Google. Có thể mạng của bạn đang chặn nó — bấm nút "🔧 Kiểm tra kết nối" ở phần Cài đặt phía trên để xem chi tiết nhé.';
-  if(code==='sourceerror')return 'Gọi máy chủ Google gặp lỗi lạ (không phải do mạng). Chụp màn hình gửi cho tôi nhé.';
+  if(code.indexOf('slow:')===0)return 'Bot damu phản hồi quá chậm (hơn 60 giây). Bạn bấm "Gửi" lại thử nhé.';
+  if(code.indexOf('blocked:')===0)return 'Không kết nối được tới máy chủ bot (Pollinations). Có thể mạng của bạn đang chặn nó — bấm nút "🔧 Kiểm tra kết nối" ở cuối tab này để xem chi tiết nhé.';
+  if(code==='sourceerror')return 'Gọi bot gặp lỗi lạ (không phải do mạng). Chụp màn hình gửi cho tôi nhé.';
   return '';
 }
-/* FIX 2026-10-15 (#7): Google hay gỡ/đổi tên model và khóa model theo đợt rollout —
-   thay vì ĐOÁN tên model cứng rồi lần lượt 404, hỏi thẳng Google "key này dùng được
-   model nào" qua GET /v1beta/models, rồi chọn model flash mới nhất hỗ trợ generateContent.
-   Danh sách cứng AI_MODELS chỉ còn là dự phòng khi bước liệt kê thất bại. */
-var aiModelCache=null; /* {key,model}: nhớ model đã chọn theo key trong phiên làm việc — không hỏi lại mỗi lần Gửi */
-/* FIX 2026-10-15 (timeout): cache model đã chọn vào localStorage theo key (hiệu lực 7 ngày)
-   → câu hỏi thứ 2 trở đi KHÔNG gọi lại GET /v1beta/models, đỡ 1 round-trip dễ vượt timeout */
-var AI_MODELLS='vocabAI.modelcache',AI_MODEL_CACHE_TTL=7*24*3600*1000;
-function aiKeyHash(k){var h=5381;for(var i=0;i<k.length;i++)h=((h<<5)+h+k.charCodeAt(i))|0;return (h>>>0).toString(36);}
-function aiModelCacheGet(key){
-  if(aiModelCache&&aiModelCache.key===key&&aiModelCache.model)return aiModelCache.model;
-  try{
-    var raw=localStorage.getItem(AI_MODELLS);if(!raw)return null;
-    var c=JSON.parse(raw);
-    if(!c||c.kh!==aiKeyHash(key)||!c.model||(Date.now()-c.ts)>AI_MODEL_CACHE_TTL)return null;
-    aiModelCache={key:key,model:c.model};
-    return c.model;
-  }catch(e){return null;}
-}
-function aiModelCacheSet(key,model){
-  aiModelCache={key:key,model:model};
-  try{localStorage.setItem(AI_MODELLS,JSON.stringify({kh:aiKeyHash(key),model:model,ts:Date.now()}));}catch(e){}
-}
-function aiModelCacheClear(){aiModelCache=null;try{localStorage.removeItem(AI_MODELLS);}catch(e){}}
-async function geminiPickModel(key){
-  var sig=null;try{sig=AbortSignal.timeout(15000);}catch(e){}
-  var r;
-  try{
-    r=await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(key),{signal:sig});
-  }catch(e){throw classifyNetErr(e,'generativelanguage.googleapis.com');}
-  if(!r.ok){
-    var detail='HTTP '+r.status;
-    try{var ej=await r.json();var em=ej&&ej.error&&ej.error.message;if(em)detail+=' — '+String(em).slice(0,200);}catch(x){}
-    if(r.status===400)throw new Error('badkey|'+detail);
-    if(r.status===403)throw new Error('forbidden|'+detail);
-    throw new Error('server|'+detail);
-  }
-  var j;
-  try{j=await r.json();}catch(e){throw new Error('server|HTTP 200 nhưng không đọc được danh sách model của Google.');}
-  var ms=((j&&j.models)||[]).map(function(m){
-    return {name:String((m&&m.name)||'').replace(/^models\//,''),methods:(m&&m.supportedGenerationMethods)||[]};
-  }).filter(function(m){
-    return m.name&&m.methods.indexOf('generateContent')>=0&&/flash/i.test(m.name)&&!/image|tts|live|embed|transcribe|omni|veo/i.test(m.name);
-  });
-  if(!ms.length)throw new Error('model404|Key này không có model flash nào hỗ trợ tạo câu trả lời.');
-  function verNum(n){var m=/(\d+)\.(\d+)/.exec(n);return m?(+m[1])*1000+(+m[2]):0;}
-  ms.sort(function(a,b){var d=verNum(b.name)-verNum(a.name);if(d)return d;return (/lite/i.test(a.name)?1:0)-(/lite/i.test(b.name)?1:0);});
-  return ms[0].name;
-}
-/* FIX 2026-10-15 (timeout): timeout cứng 30s → 90s MỖI LƯỢT gọi generateContent (tạo signal mới cho
-   từng model, không dùng chung 1 signal cho cả vòng lặp). Khi 1 lượt bị timeout → tự thử lại ĐÚNG 1 lần
-   với model dự phòng kế tiếp thay vì bỏ cuộc ngay. */
-var AI_AI_TIMEOUT_MS=90000;
-async function geminiAsk(key,q){
-  var models=[];
-  /* #7: ưu tiên model mà key thật sự dùng được (cache localStorage theo key — không liệt kê lại mỗi lần Gửi) */
-  var cached=aiModelCacheGet(key);
-  if(cached){
-    models.push(cached);
-  }else{
-    try{
-      var picked=await geminiPickModel(key);
-      aiModelCacheSet(key,picked);
-      models.push(picked);
-    }catch(e){
-      var em0=String((e&&e.message)||'');
-      /* key sai / mất mạng / bị chặn: báo luôn, đoán mò thêm chỉ tốn thời gian */
-      if(/^(badkey|forbidden|offline|slow:|blocked:)/.test(em0))throw e;
-      aiLogErr('geminiAsk.pickModel',e); /* lỗi lạ → rớt xuống danh sách cứng dự phòng */
-    }
-  }
-  for(var i=0;i<AI_MODELS.length;i++)if(models.indexOf(AI_MODELS[i])<0)models.push(AI_MODELS[i]);
-  var retried=false,mi=0;
-  while(mi<models.length){
-    var sig=null;try{sig=AbortSignal.timeout(AI_AI_TIMEOUT_MS);}catch(e){}
-    var r;
-    try{
-      r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+models[mi]+':generateContent?key='+encodeURIComponent(key),{
-        method:'POST',headers:{'Content-Type':'application/json'},signal:sig,
-        body:JSON.stringify({contents:[{role:'user',parts:[{text:q}]}],systemInstruction:{parts:[{text:AI_SYSTEM}]},generationConfig:{temperature:0.7,maxOutputTokens:1024}})
-      });
-    }catch(e){
-      var ce=classifyNetErr(e,'generativelanguage.googleapis.com');
-      /* timeout 1 lượt → thử lại đúng 1 lần với model dự phòng kế tiếp */
-      if(String(ce.message).indexOf('slow:')===0&&!retried&&mi+1<models.length){
-        retried=true;
-        aiLogErr('geminiAsk.timeoutRetry',new Error('timeout ở model '+models[mi]+' → thử lại 1 lần với model dự phòng '+models[mi+1]));
-        mi++;
-        continue;
-      }
-      throw ce;
-    }
-    if(r.status===404){
-      if(cached&&cached===models[mi]){cached=null;aiModelCacheClear();} /* model trong cache vừa bị Google gỡ → quên đi để lần sau liệt kê lại */
-      mi++;
-      continue; /* model bị gỡ — thử model tiếp theo */
-    }
-    if(!r.ok){
-      var detail='HTTP '+r.status;
-      try{var ej=await r.json();var em=ej&&ej.error&&ej.error.message;if(em)detail+=' — '+String(em).slice(0,200);}catch(x){}
-      if(r.status===400)throw new Error('badkey|'+detail);
-      if(r.status===403)throw new Error('forbidden|'+detail);
-      if(r.status===429)throw new Error('quota|'+detail);
-      throw new Error('server|'+detail);
-    }
-    var j;
-    try{j=await r.json();}catch(e){throw new Error('server|HTTP 200 nhưng máy chủ trả về dữ liệu không đọc được. Thử gửi lại nhé.');} /* FIX 2026-10-15 (#8): trước đây r.json() hỏng cho thông báo "Lỗi không rõ: SyntaxError..." khó hiểu */
-    var t='';
-    try{t=(j.candidates[0].content.parts||[]).map(function(p){return p.text||'';}).join('');}catch(e){}
-    if(!t.trim())throw new Error('empty');
-    return t.trim();
-  }
-  throw new Error('model404|HTTP 404 — Google đã gỡ tất cả model đã thử ('+models.join(', ')+'). Báo cho tôi để cập nhật app nhé.');
-}
-/* FIX 2026-10-15 (AI dự phòng): Pollinations.ai — MIỄN PHÍ, KHÔNG CẦN KEY, CORS mở.
-   CHỈ gọi khi Gemini đã thất bại hoàn toàn (thử hết retry + đổi model mà vẫn 503/timeout/quota/404),
-   hoặc khi circuit breaker đã MỞ (Google nghẽn ≥2 lần liên tiếp trong 10 phút → bỏ qua Gemini luôn,
-   không chờ 90s+90s vô ích). Trả về TEXT thuần (r.text()), giữ giọng Capy qua tham số ?system=.
-   note: dòng ghi chú đính kèm đầu đáp án (mặc định = dòng "Google bận" cũ). */
-var AI_FALLBACK_TIMEOUT_MS=60000;
-async function pollinationsAsk(q,note){
-  /* FIX 2026-10-15 (lần 2 treo): bọc toàn bộ trong Promise.race với timeout cứng 65s.
-     AbortSignal chỉ hủy được fetch(), không hủy được r.text() nếu server gửi header
-     rồi treo body → race đảm bảo không bao giờ treo quá 65s. */
+/* ---- Engine bot damu keyless: POST https://text.pollinations.ai/openai (như hub/bot/) ----
+   Promise.race với timeout cứng: AbortSignal chỉ hủy được fetch(), không hủy được
+   r.text() nếu server gửi header rồi treo body — race đảm bảo không treo quá hạn. */
+var AI_BOT_TIMEOUT_MS=60000;
+async function botRaw(messages,timeoutMs,temp){
+  var ms=timeoutMs||AI_BOT_TIMEOUT_MS;
   return Promise.race([
     (async function(){
-      var sig=null;try{sig=AbortSignal.timeout(AI_FALLBACK_TIMEOUT_MS);}catch(e){}
-      var url='https://text.pollinations.ai/'+encodeURIComponent(q)+'?model=openai&system='+encodeURIComponent(AI_SYSTEM)+'&private=true';
+      var sig=null;try{sig=AbortSignal.timeout(ms);}catch(e){}
       var r;
       try{
-        r=await fetch(url,{signal:sig});
-      }catch(e){
-        throw classifyNetErr(e,'text.pollinations.ai');
-      }
-      if(!r.ok)throw new Error('server|HTTP '+r.status+' từ AI dự phòng.');
-      var t='';
-      try{t=await r.text();}catch(e){throw new Error('server|Không đọc được dữ liệu từ AI dự phòng.');}
-      if(!String(t).trim())throw new Error('empty');
-      return t;
+        r=await fetch('https://text.pollinations.ai/openai',{method:'POST',headers:{'Content-Type':'application/json'},signal:sig,body:JSON.stringify({model:'openai',private:true,temperature:(typeof temp==='number'?temp:0.5),messages:messages})});
+      }catch(e){throw classifyNetErr(e,'text.pollinations.ai');}
+      if(r.status===429)throw new Error('quota|HTTP 429 từ Pollinations.');
+      if(!r.ok)throw new Error('server|HTTP '+r.status+' từ Pollinations.');
+      var raw='';
+      try{raw=await r.text();}catch(e){throw new Error('server|Không đọc được dữ liệu từ bot.');}
+      if(!raw||!raw.trim())throw new Error('empty');
+      /* Envelope JSON mà không có content (model đốt hết token vào reasoning,
+         test thật 2026-10-24 đã gặp) -> coi là 'empty' để nơi gọi thử lại,
+         TUYỆT ĐỐI không hiển thị nguyên envelope/reasoning cho người học. */
+      try{var j=JSON.parse(raw);if(j&&typeof j==='object'){
+        if(j.choices&&j.choices[0]&&j.choices[0].message&&typeof j.choices[0].message.content==='string'&&j.choices[0].message.content.trim())return j.choices[0].message.content.trim();
+        throw new Error('empty');
+      }}catch(x){if(x&&x.message==='empty')throw x;}
+      return raw.trim();
     })(),
-    new Promise(function(_,rej){setTimeout(function(){rej(new Error('slow:text.pollinations.ai'));},AI_FALLBACK_TIMEOUT_MS+5000);})
-  ]).then(function(t){
-    aiLogErr('aiFallback',new Error(note?'Google nghẽn → bỏ qua Gemini, dùng AI dự phòng Pollinations.ai':'Gemini fail hoàn toàn → đã dùng AI dự phòng Pollinations.ai'));
-    return (note||'(đang dùng AI dự phòng vì Google bận)')+'\n'+String(t).trim();
-  });
-  aiLogErr('aiFallback',new Error(note?'Google nghẽn → bỏ qua Gemini, dùng AI dự phòng Pollinations.ai':'Gemini fail hoàn toàn → đã dùng AI dự phòng Pollinations.ai'));
-  return (note||'(đang dùng AI dự phòng vì Google bận)')+'\n'+String(t).trim();
+    new Promise(function(_,rej){setTimeout(function(){rej(new Error('slow:text.pollinations.ai'));},ms+5000);})
+  ]);
 }
-/* FIX 2026-10-15 (circuit breaker): Google treo (không trả 503 ngay mà im lặng tới hết 90s timeout)
-   thì app chờ 90s + retry 90s = 180s mới chuyển sang Pollinations — user không đợi nổi.
-   Đếm số lần Gemini thất bại LIÊN TIẾP (503/timeout) vào localStorage 'vocabAI.gfail' kèm thời gian;
-   ≥2 lần trong 10 phút qua → MỞ MẠCH: bỏ qua Gemini, gọi thẳng Pollinations. Sau 10 phút tự thử lại
-   Gemini; Gemini thành công 1 lần → reset bộ đếm về 0. */
-var AI_GFAIL_KEY='vocabAI.gfail',AI_GFAIL_MAX=2,AI_GFAIL_WINDOW_MS=10*60*1000;
-function aiGfailGet(){
-  try{
-    var o=JSON.parse(localStorage.getItem('vocabAI.gfail')||'null'); /* đọc bộ đếm */
-    var count=(o&&+o.count)||0,lastFail=(o&&+o.lastFail)||0;
-    if(count>0&&(Date.now()-lastFail)>AI_GFAIL_WINDOW_MS)return {count:0,lastFail:0}; /* quá 10 phút → mạch tự đóng, thử lại Gemini */
-    return {count:count,lastFail:lastFail};
-  }catch(e){return {count:0,lastFail:0};}
+/* Chat: gửi kèm lịch sử gần nhất (tối đa 12 tin) để bot nhớ mạch ĐỐ từng câu —
+   người học trả lời câu đố trước, bot chấm rồi mới hỏi câu tiếp theo.
+   Lượt trả rỗng (empty) -> thử lại đúng 1 lần với temperature khác để tránh
+   trúng lại bản cache lỗi phía Pollinations. */
+async function botAsk(q){
+  var hist=aiMsgs.slice(-12).map(function(m){return {role:m.r==='u'?'user':'assistant',content:m.t};});
+  if(!hist.length||hist[hist.length-1].content!==q)hist.push({role:'user',content:q});
+  var msgs=[{role:'system',content:AI_SYSTEM}].concat(hist);
+  try{return await botRaw(msgs,AI_BOT_TIMEOUT_MS,0.5);}
+  catch(e){
+    if(String((e&&e.message)||'')==='empty'){aiLogErr('botAsk.emptyRetry',e);return botRaw(msgs,AI_BOT_TIMEOUT_MS,0.7);}
+    throw e;
+  }
 }
-function aiGfailSet(count){try{localStorage.setItem('vocabAI.gfail',JSON.stringify({count:count,lastFail:Date.now()}));}catch(e){}} /* ghi/reset bộ đếm */
-function aiGfailBump(){var g=aiGfailGet();aiGfailSet(g.count+1);}
-function aiGfailReset(){aiGfailSet(0);}
-function aiGeminiTripped(){return aiGfailGet().count>=AI_GFAIL_MAX;}
-/* FIX 2026-10-15 (lần 2 treo): nếu câu trước phải dùng Pollinations vì Gemini fail,
-   thì câu này đi thẳng Pollinations luôn — không thử Gemini 90s+90s vô ích nữa.
-   Biến memory (không lưu localStorage), reset khi Gemini thành công. */
-var aiPreferFallback=false;
-function aiIsGoogleFail(e){
-  var m=String((e&&e.message)||'');
-  if(m.indexOf('slow:')===0)return true;               /* timeout */
-  return m.indexOf('server|')===0&&m.indexOf('503')>=0; /* HTTP 503 */
+/* Làm giàu từ bằng bot (đường upload .docx): 1 lượt keyless GỌN, chỉ JSON.
+   Parse + kiểm chứng chặt chẽ (mảng chuỗi ngắn); hỏng/thiếu -> null để nơi gọi
+   báo lỗi trung thực, TUYỆT ĐỐI không trả dữ liệu bịa. */
+async function botEnrichWord(word){
+  var prompt='Cho từ tiếng Anh "'+String(word||'')+'", trả về JSON đúng dạng {"syn":["..."],"ant":["..."],"vi":"..."} — syn: tối đa 5 từ đồng nghĩa tiếng Anh; ant: tối đa 5 từ trái nghĩa tiếng Anh (không có thì mảng rỗng); vi: nghĩa tiếng Việt ngắn gọn (tối đa 12 từ). Chỉ trả JSON thuần, không thêm chữ nào khác.';
+  var t=await botRaw([{role:'system',content:'Bạn là từ điển Anh–Việt. Chỉ trả về JSON thuần, không giải thích, không markdown.'},{role:'user',content:prompt}],45000);
+  var a=t.indexOf('{'),b=t.lastIndexOf('}');
+  if(a<0||b<=a)return null;
+  var o;try{o=JSON.parse(t.slice(a,b+1));}catch(e){return null;}
+  if(!o||typeof o!=='object')return null;
+  function cleanList(x){if(!Array.isArray(x))return [];return x.map(function(v){return String(v||'').trim();}).filter(function(v){return v&&v.length<=40;}).slice(0,5);}
+  var out={syn:cleanList(o.syn),ant:cleanList(o.ant),vi:(typeof o.vi==='string'?o.vi.trim().slice(0,120):'')};
+  if(!out.syn.length&&!out.ant.length&&!out.vi)return null;
+  return out;
 }
 async function aiSend(){
-  /* FIX 2026-10-15 (#1 — gốc lỗi "bấm hỏi cứ bị mất"): KIỂM TRA trước, chỉ XÓA state khi chắc chắn sẽ gửi.
-     Trước đây xóa aiPending/aiQ trước rồi mới kiểm tra → chữ biến mất mà không có gì xảy ra. */
+  /* KIỂM TRA trước, chỉ XÓA state khi chắc chắn sẽ gửi (gốc lỗi cũ "bấm hỏi cứ bị mất chữ").
+     Bot keyless: KHÔNG còn bước kiểm tra key — có chữ là gửi thẳng. */
   var q=aiQ.trim();
   if(!q&&aiPending)q=aiPending;
   if(!q||aiLoading)return;              /* chưa có chữ / đang gửi → giữ nguyên mọi thứ */
-  if(!aiGetKey()){aiNoKeyWarn=true;render();return;}  /* chưa có key → GIỮ NGUYÊN chữ, báo ngay trên khung chat */
-  aiNoKeyWarn=false;
   aiPending='';aiQ='';                  /* từ đây chắc chắn gửi → mới xóa */
   aiMsgs.push({r:'u',t:q});aiMsgsSave();aiLoading=true;
-  try{render();aiScroll();}catch(e){aiLogErr('aiSend.render1',e);}  /* FIX #3: throw ở đây không được kẹt aiLoading */
-  var fbTried=false; /* FIX 2026-10-15 (circuit breaker): đã gọi thẳng Pollinations → catch không gọi lại lần nữa */
+  try{render();aiScroll();}catch(e){aiLogErr('aiSend.render1',e);}  /* throw ở đây không được kẹt aiLoading */
   try{
-    var ans;
-    if(aiPreferFallback||aiGeminiTripped()){
-      /* Ưu tiên Pollinations: hoặc circuit breaker MỞ (Google nghẽn ≥2 lần/10 phút),
-         hoặc câu trước đã phải dùng dự phòng (aiPreferFallback) → bỏ qua Gemini luôn,
-         gọi thẳng Pollinations — không chờ 90s+90s vô ích. */
-      fbTried=true;
-      try{
-        ans=await pollinationsAsk(q,'(Google đang nghẽn, dùng AI dự phòng)');
-      }catch(fbe){
-        /* Pollinations cũng fail khi đang ưu tiên → thử lại Gemini 1 lần trước khi bỏ cuộc */
-        aiLogErr('aiSend.preferFbFail',fbe);
-        aiPreferFallback=false;
-        ans=await geminiAsk(aiGetKey(),q);
-        aiGfailReset();
-      }
-    }else{
-      try{
-        ans=await geminiAsk(aiGetKey(),q);
-        aiGfailReset(); /* Gemini thành công 1 lần → reset bộ đếm về 0 */
-        aiPreferFallback=false; /* FIX 2026-10-15: Gemini ngon lại → lần sau thử Gemini trước */
-      }catch(e){
-        if(aiIsGoogleFail(e))aiGfailBump(); /* 503/timeout → đếm fail liên tiếp */
-        throw e; /* rớt xuống catch ngoài: thử Pollinations dự phòng như cũ */
-      }
-    }
+    var ans=await botAsk(q);
     aiMsgs.push({r:'a',t:ans});
   }catch(e){
-    /* FIX 2026-10-15 (AI dự phòng): Gemini fail → thử Pollinations trước khi báo lỗi.
-       Chỉ dùng khi lỗi thuộc nhóm server/quota/timeout/model (503/429/timeout/404) —
-       KHÔNG dùng khi key sai (400/403) hay mất mạng (dự phòng cũng không cứu được). */
-    var ecode=String((e&&e.message)||''),ecodeBase=ecode;
-    var p0=ecode.indexOf('|');if(p0>=0)ecodeBase=ecode.slice(0,p0);
-    var canFallback=(/^(server|quota|model404)$/.test(ecodeBase)||ecodeBase.indexOf('slow:')===0)&&!fbTried;
-    var fbOk=false;
-    if(canFallback){
-      try{
-        var fans=await pollinationsAsk(q);
-        aiMsgs.push({r:'a',t:fans});
-        fbOk=true;
-        aiPreferFallback=true; /* FIX 2026-10-15: lần sau đi thẳng Pollinations, khỏi chờ Gemini */
-      }catch(e2){
-        aiLogErr('aiSend.fallback',e2); /* cả dự phòng cũng fail → rớt xuống báo lỗi thân thiện */
-      }
-    }
-    if(fbOk)return;
-    aiLogErr('aiSend.geminiAsk',e);     /* FIX #5: mọi lỗi gọi AI đều vào log */
-    /* FIX: tách chi tiết kỹ thuật (sau dấu |) để hiển thị kèm — Nguyễn chụp gửi khi cần */
+    aiLogErr('aiSend.botAsk',e);     /* mọi lỗi gọi bot đều vào log */
     var code=String((e&&e.message)||''),detail='';
     var pi=code.indexOf('|');
     if(pi>=0){detail=code.slice(pi+1);code=code.slice(0,pi);}
@@ -1407,13 +1257,13 @@ async function aiSend(){
     if(detail)fmsg+='\nChi tiết kỹ thuật (chụp màn hình gửi tôi nếu cần): '+detail;
     aiMsgs.push({r:'a',t:'⚠️ '+fmsg});
   }finally{
-    aiLoading=false;                    /* FIX #3: bảo vệ — không bao giờ kẹt ở "Đang nghĩ…" */
+    aiLoading=false;                    /* bảo vệ — không bao giờ kẹt ở "Đang nghĩ…" */
   }
   try{aiMsgsSave();render();aiScroll();}catch(e){aiLogErr('aiSend.render2',e);}
 }
 function askAIWord(word){
   aiPending='Đố tôi về từ "'+String(word||'')+'": hỏi lần lượt từng từ đồng nghĩa rồi từng từ trái nghĩa, đợi tôi trả lời từng câu rồi mới cho đáp án.';
-  aiQ=aiPending; /* FIX Lỗi C1: đồng thời set aiQ để aiSend đọc được và input hiển thị sẵn */
+  aiQ=aiPending; /* đồng thời set aiQ để aiSend đọc được và input hiển thị sẵn */
   go('ai');aiSend();
 }
 /* ---- Khởi tạo ---- */
