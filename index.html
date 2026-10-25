@@ -138,7 +138,7 @@ async function netDiag(){
     ['Tra từ (Wiktionary)','GET','https://en.wiktionary.org/api/rest_v1/page/definition/hello'],
     ['Đồng/trái nghĩa (Datamuse)','GET','https://api.datamuse.com/words?rel_syn=happy&max=1'],
     ['Dịch tự động (MyMemory)','GET','https://api.mymemory.translated.net/get?q=hello&langpair=en|vi'],
-    ['Bot damu (đường riêng)','GET','https://damu-bot.ntai200508.workers.dev/health'],
+    ['Vita (đường riêng)','GET','https://damu-bot.ntai200508.workers.dev/health'],
     ['Mạng chung (đối chứng)','GET','https://www.google.com/generate_204']
   ];
   for(var i=0;i<tests.length;i++){
@@ -977,7 +977,7 @@ async function importParsed(list,src,isWS){
       if(!w.audio&&d.audio)patch.audio=d.audio;
       upsertWord(patch);
       /* 2026-10-24 (bot damu keyless): từ điển còn thiếu syn/ant/nghĩa Việt thì bot bù bằng
-         1 lượt Pollinations gọn. Bot lỗi/không đọc được -> GIỮ NGUYÊN dữ liệu từ điển và
+         1 lượt bot damu gọn (qua Worker). Bot lỗi/không đọc được -> GIỮ NGUYÊN dữ liệu từ điển và
          ghi vào botMiss để báo trung thực ở cuối lượt — TUYỆT ĐỐI không bịa dữ liệu. */
       var _w2=getWord(needy[i]);
       if(_w2&&(!(_w2.syn&&_w2.syn.length)||!(_w2.ant&&_w2.ant.length)||(!_w2.viGloss&&!_w2.vi))){
@@ -1120,7 +1120,7 @@ function restore(){
    trả lời hoặc chịu thua. Bot lỗi thì báo trung thực, không bịa câu trả lời. */
 var AI_SYSTEM='Bạn là Capy — gia sư từ vựng tiếng Anh của app damu cho người Việt, giọng capybara hơi "mỏ hỗn" nhưng dễ thương: trêu nhẹ khi người học sai, khen khi đúng. Trả lời ngắn gọn, chính xác, bằng tiếng Việt (trừ ví dụ tiếng Anh). QUY TẮC ĐỐ TỪ (bắt buộc khi người học hỏi về một từ hoặc nhờ đố): hỏi LẦN LƯỢT TỪNG CÂU MỘT — đầu tiên đố các từ ĐỒNG NGHĨA (mỗi lượt đúng 1 từ), người học trả lời xong mới chấm câu đó: đúng thì khen, sai thì cho GỢI Ý TIẾNG ANH trước (định nghĩa/gợi ý bằng tiếng Anh), chờ trả lời lại; chỉ khi người học chịu thua hoặc sai lần 2 mới cho ĐÁP ÁN kèm nghĩa TIẾNG VIỆT. Hết đồng nghĩa mới chuyển sang TRÁI NGHĨA, cũng từng câu một. TUYỆT ĐỐI không liệt kê đáp án hàng loạt, không cho đáp án tiếng Việt trước khi người học tự trả lời.';
 var AI_ERR={offline:'Mất mạng rồi — kiểm tra kết nối internet rồi gửi lại nhé.',quota:'Bot đang quá tải (lỗi 429). Nghỉ một lát rồi thử lại nhé.',server:'Máy chủ bot đang lỗi, thử lại sau vài phút nhé.',empty:'Bot không trả lời được câu này, thử hỏi cách khác nhé.'};
-var aiMsgs=[],aiLoading=false,aiPending='',aiQ='';
+var aiMsgs=[],aiLoading=false,aiPending='',aiQ='',aiTryMsg='';
 /* Lịch sử chat persist vào localStorage (giữ ~50 tin nhắn gần nhất), restore khi load trang — schema giữ nguyên như cũ */
 var AI_MSGSLS='vocabAI.msgs';
 try{var _m=JSON.parse(localStorage.getItem(AI_MSGSLS));if(Array.isArray(_m))aiMsgs=_m.slice(-50);}catch(e){}
@@ -1157,11 +1157,11 @@ function aiMsgsHTML(){
   if(!aiMsgs.length)return '<p class="msg">Chưa có câu hỏi nào. Ví dụ: "từ \'convince\' dùng với giới từ gì?", "phân biệt \'convince\' và \'persuade\'", hoặc "đố tôi từ convince".</p>';
   return aiMsgs.map(function(m){
     return '<div class="amsg '+(m.r==='u'?'u':'a')+'"><b>'+(m.r==='u'?'Bạn':CAPY_IMG+'Capy')+'</b><div>'+esc(m.t).replace(/\n/g,'<br>')+'</div></div>';
-  }).join('')+(aiLoading?'<div class="amsg a"><b>'+CAPY_IMG+'Capy</b><div><i>Capy đang nghĩ… ⏳ (tối đa 60 giây, app không đơ đâu)</i></div></div>':'');
+  }).join('')+(aiLoading?'<div class="amsg a"><b>'+CAPY_IMG+'Capy</b><div><i>'+(aiTryMsg?esc(aiTryMsg):'Capy đang nghĩ… ⏳ (tối đa 60 giây, app không đơ đâu)')+'</i></div></div>':'');
 }
 function vAI(){
-  var h='<h1>'+CAPY_IMG+' Trợ lý AI</h1><p class="sub">Bot damu — gia sư từ vựng chạy ngay trong trình duyệt bằng Bot damu, KHÔNG cần key, không cần tài khoản.</p>';
-  h+='<div class="box" style="padding:10px 14px"><div class="wrow" style="border:0;padding:0"><div class="w"><b>🤖 Bot damu đang sẵn sàng — không cần key nữa</b><small>Ô key Gemini đã bỏ hẳn. Cứ hỏi thẳng: hỏi về 1 từ là Capy ĐỐ bạn từng từ đồng/trái nghĩa một, gợi ý tiếng Anh trước, đáp án tiếng Việt sau.</small></div></div></div>';
+  var h='<h1>'+CAPY_IMG+' Trợ lý AI</h1><p class="sub">Vita — gia sư từ vựng chạy ngay trong trình duyệt bằng Vita, KHÔNG cần key, không cần tài khoản.</p>';
+  h+='<div class="box" style="padding:10px 14px"><div class="wrow" style="border:0;padding:0"><div class="w"><b>🤖 Vita đang sẵn sàng — không cần key nữa</b><small>Ô key Gemini đã bỏ hẳn. Cứ hỏi thẳng: hỏi về 1 từ là Capy ĐỐ bạn từng từ đồng/trái nghĩa một, gợi ý tiếng Anh trước, đáp án tiếng Việt sau.</small></div></div></div>';
   h+='<div class="box"><div id="aimsgs">'+aiMsgsHTML()+'</div>';
   /* bind value=aiQ + oninput lưu state (không render lại khi gõ) để render() không xóa chữ đang gõ */
   h+='<div class="row" style="margin-top:0"><input type="text" id="ain" placeholder="Hỏi gì về từ vựng…" value="'+esc(aiQ)+'" oninput="aiQ=this.value" style="flex:3;min-width:180px" onkeydown="if(event.key===\'Enter\'&&!event.isComposing)aiSend()"><button class="p" style="flex:1" onclick="aiSend()">Gửi</button></div>';
@@ -1172,7 +1172,7 @@ function vAI(){
 function aiScroll(){try{var m=$('aimsgs');if(m)m.scrollTop=m.scrollHeight;}catch(e){aiLogErr('aiScroll',e);}}
 function aiNetMsg(code){
   if(code==='offline')return AI_ERR.offline;
-  if(code.indexOf('slow:')===0)return 'Bot damu phản hồi quá chậm (hơn 60 giây). Bạn bấm "Gửi" lại thử nhé.';
+  if(code.indexOf('slow:')===0)return 'Vita phản hồi quá chậm (hơn 60 giây). Bạn bấm "Gửi" lại thử nhé.';
   if(code.indexOf('blocked:')===0)return 'Không kết nối được tới máy chủ bot (Worker damu). Có thể mạng của bạn đang chặn nó — bấm nút "🔧 Kiểm tra kết nối" ở cuối tab này để xem chi tiết nhé.';
   if(code==='sourceerror')return 'Gọi bot gặp lỗi lạ (không phải do mạng). Chụp màn hình gửi cho tôi nhé.';
   return '';
@@ -1203,17 +1203,34 @@ async function botRaw(messages,timeoutMs,temp){
 }
 /* Chat: gửi kèm lịch sử gần nhất (tối đa 12 tin) để bot nhớ mạch ĐỐ từng câu —
    người học trả lời câu đố trước, bot chấm rồi mới hỏi câu tiếp theo.
-   Lượt trả rỗng (empty) -> thử lại đúng 1 lần với temperature khác để tránh
-   trúng lại bản lỗi phía máy chủ. */
+   TEAM2 25/10 (gia cố cửa sổ engine chập chờn): lỗi phía máy chủ (server|HTTP 5xx)
+   hoặc trả rỗng (empty) -> tự thử lại tối đa 2 lần, cách nhau 2s rồi 5s (backoff),
+   mỗi lần thử lại đổi temperature để tránh trúng lại bản lỗi phía máy chủ; trong
+   lúc thử lại, bong bóng "đang nghĩ" đổi thành dòng trạng thái thử lại (aiTryMsg)
+   để người học thấy app vẫn đang làm, không im lặng, không báo lỗi giả giữa chừng.
+   Chỉ sau 3 lượt đều hỏng mới ném lỗi ra aiSend hiện bong bóng lỗi thật.
+   KHÔNG thử lại: quota (429 — đang bị giới hạn, thử dồn chỉ nặng thêm), offline/
+   blocked (mạng thật sự hỏng), slow (timeout 60s — thử lại tốn thêm 65s/lượt). */
 async function botAsk(q){
   var hist=aiMsgs.slice(-12).map(function(m){return {role:m.r==='u'?'user':'assistant',content:m.t};});
   if(!hist.length||hist[hist.length-1].content!==q)hist.push({role:'user',content:q});
   var msgs=[{role:'system',content:AI_SYSTEM}].concat(hist);
-  try{return await botRaw(msgs,AI_BOT_TIMEOUT_MS,0.5);}
-  catch(e){
-    if(String((e&&e.message)||'')==='empty'){aiLogErr('botAsk.emptyRetry',e);return botRaw(msgs,AI_BOT_TIMEOUT_MS,0.7);}
-    throw e;
+  aiTryMsg='';
+  var temps=[0.5,0.7,0.5],waits=[2000,5000],lastErr=null;
+  for(var a=0;a<3;a++){
+    try{var ans=await botRaw(msgs,AI_BOT_TIMEOUT_MS,temps[a]);aiTryMsg='';return ans;}
+    catch(e){
+      lastErr=e;
+      var code=String((e&&e.message)||'').split('|')[0];
+      if((code!=='server'&&code!=='empty')||a>=2)break;
+      aiLogErr('botAsk.retry'+(a+1),e);
+      aiTryMsg='Máy chủ bot đang chập chờn, Capy thử lại lần '+(a+1)+'… ⏳';
+      try{render();aiScroll();}catch(x){}
+      await new Promise(function(r){setTimeout(r,waits[a]);});
+    }
   }
+  aiTryMsg='';
+  throw lastErr;
 }
 /* Làm giàu từ bằng bot (đường upload .docx): 1 lượt keyless GỌN, chỉ JSON.
    Parse + kiểm chứng chặt chẽ (mảng chuỗi ngắn); hỏng/thiếu -> null để nơi gọi
@@ -1251,7 +1268,7 @@ async function aiSend(){
     if(detail)fmsg+='\nChi tiết kỹ thuật (chụp màn hình gửi tôi nếu cần): '+detail;
     aiMsgs.push({r:'a',t:'⚠️ '+fmsg});
   }finally{
-    aiLoading=false;                    /* bảo vệ — không bao giờ kẹt ở "Đang nghĩ…" */
+    aiLoading=false;aiTryMsg='';        /* bảo vệ — không bao giờ kẹt ở "Đang nghĩ…" */
   }
   try{aiMsgsSave();render();aiScroll();}catch(e){aiLogErr('aiSend.render2',e);}
 }
