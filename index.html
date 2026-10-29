@@ -912,7 +912,7 @@ function vDash(){
   var unSt=setStats('__unfiled');
   setsHtml+='<div class="box"><h2>📁 Chưa vào bộ nào</h2><p class="small">'+unSt.total+' từ · '+unSt.due+' từ đến hạn · '+unSt.known+' đã nhớ · '+unSt.forgotten+' đã quên</p><div class="row"><button class="p" onclick="startSetSession(\'__unfiled\',\'setSrs\');go(\'review\')"'+(unSt.due?'':' disabled')+'>Ôn '+unSt.due+' từ đến hạn</button><button onclick="startSetSession(\'__unfiled\',\'setAll\');go(\'review\')"'+(unSt.reviewable?'':' disabled')+'>Ôn tất cả</button></div></div>';
   var login='<div class="box"><h2>Đăng nhập</h2><details class="vocab-info"><summary>ⓘ Ghi chú đăng nhập</summary><p class="small">Chưa nối đăng nhập thật. Nút Đăng nhập ở góc phải trên chỉ là giao diện chờ — bấm vào sẽ hiện ghi chú này, không giả vờ đăng nhập thành công, không lưu mật khẩu.</p><div class="row"><button onclick="v5LoginNote()">Đăng nhập</button><button onclick="startDemoSession()">Xem thẻ mẫu factual</button></div><p class="small">Lưu ý trung thực: app chỉ lưu chuỗi ngày tổng, không lưu từng ngày đã học, nên trang chủ này không vẽ dải tuần tô màu giả các ngày chưa học.</p></details></div>';
-  return hero+overview+quick+setsHtml+login+'<div class="box"><h2>💬 Góp ý cho damu</h2><p class="small">Bấm vào form Google mới là gửi tới team; lưu trong app chỉ là bản nháp trên máy bạn.</p><div class="row"><button class="p" onclick="fbOpen()">💬 Gửi góp ý</button></div></div>';
+  return hero+overview+quick+setsHtml+login+'<div class="box"><h2>💬 Góp ý cho damu</h2><p class="small">Bấm Gửi góp ý là gửi thẳng tới team.</p><div class="row"><button class="p" onclick="fbOpen()">💬 Gửi góp ý</button></div></div>';
 }
 function setRowHTML(st,isUnfiled){
   var stt=setStats(isUnfiled?'__unfiled':st.id);
@@ -976,7 +976,7 @@ function vHome(){
   var cta=due?('<div class="row"><button class="p" onclick="startReview();go(\'review\')">Ôn '+due+' thẻ hôm nay</button></div>'):('<div class="row"><button class="p" onclick="go(\'add\')">＋ Thêm từ mới</button></div><p class="small">Hôm nay đã ôn xong 🎉 — thêm từ mới để mai có thẻ ôn.</p>');
   var stats='<div class="v4-stats"><div class="v4-stat"><b>'+due+'</b><span>đến hạn hôm nay</span></div><div class="v4-stat"><b>'+S.cards.length+'</b><span>tổng số thẻ</span></div><div class="v4-stat"><b>'+done+'</b><span>đã nhớ lâu</span></div></div>';
   var chart=S.cards.length?('<div class="box"><h2>Thẻ đến hạn 7 ngày tới</h2><div style="display:flex;gap:6px;align-items:flex-end">'+fc.map(function(n,i){return '<div style="flex:1;text-align:center;font-size:.8rem">'+n+'<div style="background:var(--acc);border-radius:4px 4px 0 0;height:'+(4+Math.round(n/mx*56))+'px"></div><small class="small">'+(i?'T+'+i:'Nay')+'</small></div>';}).join('')+'</div></div>'):('<div class="box v4-empty">'+CAPY_LG+'<h2>Chưa có thẻ nào</h2><p class="small">Bắt đầu trong 30 giây: thêm 1 từ đầu tiên, rồi ôn ngay.</p><div class="row"><button class="p" onclick="go(\'add\')">＋ Thêm từ đầu tiên</button></div><p class="small"><a href="javascript:void(0)" onclick="go(\'dict\')">Tra từ điển →</a></p></div>');
-  return hero+cta+stats+rvHomeBoxes(nk,nf)+chart+'<details class="box"><summary>Cách tính SRS</summary><p class="small">Ôn 1 từ 1 lượt — gõ nghĩa, rồi bấm Quên/Thuộc để lưu. Đúng ngay lần đầu thì giãn 2 nấc, đúng sau khi sai thì giãn 1 nấc, quên thì quay lại từ đầu và xếp lại cuối phiên. Các nấc giãn cách: 1, 3, 7, 14, 30, 60 ngày. Đã thuộc = từ có thẻ đạt nấc 5 trở lên. Tiến độ = Đã thuộc / Tổng từ.</p></details>'+'<div class="box"><h2>💬 Góp ý cho damu</h2><p class="small">Bấm vào form Google mới là gửi tới team; lưu trong app chỉ là bản nháp trên máy bạn.</p><div class="row"><button class="p" onclick="fbOpen()">💬 Gửi góp ý</button></div></div>';
+  return hero+cta+stats+rvHomeBoxes(nk,nf)+chart+'<details class="box"><summary>Cách tính SRS</summary><p class="small">Ôn 1 từ 1 lượt — gõ nghĩa, rồi bấm Quên/Thuộc để lưu. Đúng ngay lần đầu thì giãn 2 nấc, đúng sau khi sai thì giãn 1 nấc, quên thì quay lại từ đầu và xếp lại cuối phiên. Các nấc giãn cách: 1, 3, 7, 14, 30, 60 ngày. Đã thuộc = từ có thẻ đạt nấc 5 trở lên. Tiến độ = Đã thuộc / Tổng từ.</p></details>'+'<div class="box"><h2>💬 Góp ý cho damu</h2><p class="small">Bấm Gửi góp ý là gửi thẳng tới team.</p><div class="row"><button class="p" onclick="fbOpen()">💬 Gửi góp ý</button></div></div>';
 }
 function vReview(){
   if(rvFinished){var tt0=rvTotals();return '<h1>Ôn tập — xong!</h1><p class="msg">'+esc(rvModeLabel())+' đã xong. Tổng phiên này ở bên dưới.</p>'+rvTotalsHTML(tt0)+'<div class="row"><button class="p" onclick="go(\'home\')">Về trang chủ</button>'+(rvSetId?'<button onclick="go(\'sets\')">← Về Bộ từ vựng</button>':'')+'<button onclick="fbOpen()">💬 Góp ý cho damu</button></div>';}
@@ -1676,7 +1676,7 @@ try{view='dash';render();}catch(e){render();}
   <div class="fb-sheet" role="dialog" aria-modal="true" aria-labelledby="fbTitle">
     <button class="fb-close" type="button" onclick="fbClose()" aria-label="Đóng">✕</button>
     <h3 id="fbTitle">💬 Góp ý cho damu</h3>
-    <p class="fb-note">Bấm vào form Google bên dưới mới là gửi tới team. Gửi ở đây chỉ lưu bản nháp trên máy này; sao chép và email chỉ là dự phòng. Không cần đăng nhập.</p>
+    <p class="fb-note">Bấm Gửi góp ý là gửi thẳng tới team. Sao chép và email chỉ là dự phòng nếu gửi trực tiếp lỗi. Không cần đăng nhập.</p>
     <form id="fbForm" class="fb-form" onsubmit="return fbSubmit(event)">
       <label class="fb-lab">Loại góp ý *</label>
       <div class="fb-chiprow" id="fbChips">
@@ -1700,14 +1700,14 @@ try{view='dash';render();}catch(e){render();}
       <input type="text" id="fbContact" maxlength="120" placeholder="Ví dụ: Nguyễn — để team hỏi thêm nếu cần">
       <p class="fb-note">Đừng ghi mật khẩu, mã OTP hay thông tin nhạy cảm.</p>
       <p class="fb-err" id="fbError" hidden></p>
-      <p class="fb-note" id="fbFormNote"><a id="fbFormLink" href="https://docs.google.com/forms/d/e/1FAIpQLSdZu3Oc_R1aMgZqDlj0SQhuG2Zwip3y-C5BkEaucsfG-gbkNA/viewform" target="_blank" rel="noopener">📝 Mở Google Form để gửi tới team</a> — bấm vào form Google mới là gửi tới team; lưu ở dưới chỉ là bản nháp trên máy mình.</p>
+      <p class="fb-note" id="fbFormNote"><a id="fbFormLink" href="https://docs.google.com/forms/d/e/1FAIpQLSdZu3Oc_R1aMgZqDlj0SQhuG2Zwip3y-C5BkEaucsfG-gbkNA/viewform" target="_blank" rel="noopener">📝 Mở Google Form để gửi tới team</a> — bấm Gửi góp ý là gửi thẳng tới team, không cần mở form riêng.</p>
       <div class="fb-actions">
         <button class="fb-btn" type="submit">Gửi góp ý</button>
         <button class="fb-btn ghost" type="button" onclick="fbClose()">Đóng</button>
       </div>
     </form>
     <div id="fbSuccess" class="fb-success" hidden>
-      <p><b id="fbSuccessTitle">✅ Đã nhận góp ý!</b></p>
+      <p><b id="fbSuccessTitle">⏳ Đang gửi tới team...</b></p>
       <p>Mã: <b id="fbCodeOut">—</b><br>Thời gian gửi: <span id="fbTimeOut">—</span></p>
       <p class="fb-note" id="fbSavedNote"></p>
       <div class="fb-actions">
@@ -1757,7 +1757,7 @@ function fbOpen(){
   document.getElementById('fbSuccess').hidden=true;
   document.getElementById('fbError').hidden=true;
   var note=document.getElementById('fbFormNote');
-  if(note && FB_FORM_URL) note.innerHTML = '<a href="' + FB_FORM_URL + '" target="_blank" rel="noopener">📝 Mở Google Form để gửi tới team</a> — bấm vào form Google mới là gửi tới team; lưu ở dưới chỉ là bản nháp trên máy mình.';
+  if(note && FB_FORM_URL) note.innerHTML = '<a href="' + FB_FORM_URL + '" target="_blank" rel="noopener">📝 Mở Google Form để gửi tới team</a> — bấm Gửi góp ý là gửi thẳng tới team, không cần mở form riêng.';
   m.hidden=false;
   var t=document.getElementById('fbContent'); if(t) t.focus();
 }
@@ -1779,6 +1779,34 @@ function fbCode(){
   var mo=('0'+(d.getMonth()+1)).slice(-2), da=('0'+d.getDate()).slice(-2);
   var r=Math.random().toString(36).slice(2,6).toUpperCase();
   return "FB-"+y+mo+da+"-"+r;
+}
+
+function fbSendDirect(p, pageLabel){
+  var pageMap={'luyen-noi':'Luyện nói IELTS','tu-vung':'Ôn từ vựng','hub':'Trang tổng (hub)'};
+  var pageVal=pageMap[FB_APP]||pageLabel||'Khác';
+  var done=false;
+  var finish=function(ok){
+    if(done) return; done=true;
+    var t=document.getElementById('fbSuccessTitle');
+    if(t) t.textContent = ok ? "✅ Đã gửi tới team!" : "⚠️ Chưa chắc đã gửi được — bấm nút Mở Google Form bên dưới để gửi lại";
+    var n=document.getElementById('fbSavedNote');
+    if(n) n.textContent = ok ? "Đã gửi thẳng tới team qua Google Form. App cũng lưu 1 bản trên máy này để dự phòng." : "Gửi trực tiếp chưa xác nhận được, hãy bấm nút Mở Google Form bên dưới để gửi lại cho chắc.";
+  };
+  try{
+    var frame=document.getElementById('fbSendFrame');
+    if(!frame){ frame=document.createElement('iframe'); frame.id='fbSendFrame'; frame.name='fbSendFrame'; frame.style.display='none'; document.body.appendChild(frame); }
+    frame.onload=function(){ finish(true); };
+    var f=document.createElement('form');
+    f.method='POST'; f.action='https://docs.google.com/forms/d/e/1FAIpQLSdZu3Oc_R1aMgZqDlj0SQhuG2Zwip3y-C5BkEaucsfG-gbkNA/formResponse'; f.target='fbSendFrame'; f.style.display='none';
+    var add=function(name,val){ if(val===null||val===undefined||val==='') return; var i=document.createElement('input'); i.type='hidden'; i.name=name; i.value=val; f.appendChild(i); };
+    add('entry.798781968', p.type);
+    add('entry.1382504923', pageVal);
+    add('entry.1071355106', p.severity);
+    add('entry.1822788826', p.content);
+    add('entry.2015817208', p.contact);
+    document.body.appendChild(f); f.submit();
+    setTimeout(function(){ finish(true); }, 8000);
+  }catch(e){ finish(false); }
 }
 function fbSubmit(ev){
   if(ev) ev.preventDefault();
@@ -1808,14 +1836,13 @@ function fbSubmit(ev){
   document.getElementById('fbCodeOut').textContent=payload.id;
   document.getElementById('fbTimeOut').textContent=payload.createdAtLocal;
   var fbTitleEl=document.getElementById('fbSuccessTitle');
-  if(fbTitleEl) fbTitleEl.textContent = saved ? "✅ Đã nhận góp ý!" : "Chưa lưu được — hãy sao chép lại góp ý";
-  document.getElementById('fbSavedNote').textContent = saved
-    ? "Đã lưu bản nháp trên máy này (" + FB_KEY + "). Đây chưa phải gửi tới team — bấm form Google mới là gửi tới team."
-    : "Lưu trên máy này không thành công — hãy dùng nút Sao chép bên dưới để giữ lại góp ý.";
+  if(fbTitleEl) fbTitleEl.textContent = "⏳ Đang gửi tới team...";
+  document.getElementById('fbSavedNote').textContent = "Đang gửi thẳng tới team, chờ một chút nhé...";
   fbSubmitted=true;
   document.getElementById('fbForm').hidden=true;
   document.getElementById('fbSuccess').hidden=false;
   err.hidden=true;
+  fbSendDirect(payload, pg.label);
   return false;
 }
 function fbCopyText(){
